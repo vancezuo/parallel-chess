@@ -5,6 +5,8 @@
  *	Copyright 1997 Tom Kerrigan
  */
 
+#ifndef DEFS_H
+#define DEFS_H
 
 #define BOOL			int
 #define TRUE			1
@@ -92,3 +94,5 @@ typedef struct {
 	int fifty;
 	int hash;
 } hist_t;
+
+#endif /* DEFS_H */

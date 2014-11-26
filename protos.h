@@ -5,6 +5,8 @@
  *	Copyright 1997 Tom Kerrigan
  */
 
+#ifndef PROTOS_H
+#define PROTOS_H
 
 /* prototypes */
 
@@ -55,3 +57,5 @@ void print_board();
 void xboard();
 void print_result();
 void bench();
+
+#endif /* PROTOS_H */
