@@ -56,6 +56,6 @@ char *move_str(move_bytes m);
 void print_board();
 void xboard();
 void print_result();
-void bench();
+void bench(char *fen);
 
 #endif /* PROTOS_H */

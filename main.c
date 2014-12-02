@@ -1,8 +1,9 @@
 /*
  *	MAIN.C
- *	Tom Kerrigan's Simple Chess Program (TSCP)
+ *	Tom Kerrigan's Simple Chess Program (TSCP), modified
  *
  *	Copyright 1997 Tom Kerrigan
+ *  Modifications: Copyright 2014 Vance Zuo
  */
 
 
@@ -10,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <ctype.h>
 #include "defs.h"
 #include "data.h"
 #include "protos.h"
@@ -38,12 +40,14 @@ int main()
 {
 	int computer_side;
 	char s[256];
+	int last;
 	int m;
 
 	printf("\n");
 	printf("Tom Kerrigan's Simple Chess Program (TSCP)\n");
 	printf("version 1.81, 2/5/03\n");
 	printf("Copyright 1997 Tom Kerrigan\n");
+	printf("Modifications: Copyright 2014 Vance Zuo\n");
 	printf("\n");
 	printf("\"help\" displays a list of commands.\n");
 	printf("\n");
@@ -115,8 +119,12 @@ int main()
 			continue;
 		}
 		if (!strcmp(s, "bench")) {
+			fgets(s, 256, stdin);
+			last = strlen(s) - 1;
+			if (last >= 0 && s[last] == '\n')
+				s[last] = '\0';
 			computer_side = EMPTY;
-			bench();
+			bench(s);
 			continue;
 		}
 		if (!strcmp(s, "bye")) {
@@ -135,7 +143,7 @@ int main()
 			printf("undo - takes back a move\n");
 			printf("new - starts a new game\n");
 			printf("d - display the board\n");
-			printf("bench - run the built-in benchmark\n");
+			printf("bench [fen] - benchmark built-in, or fen position\n");
 			printf("bye - exit the program\n");
 			printf("xboard - switch to XBoard mode\n");
 			printf("Enter moves in coordinate notation, e.g., e2e4, e7e8Q\n");
@@ -428,14 +436,9 @@ void print_result()
 	else if (fifty >= 100)
 		printf("1/2-1/2 {Draw by fifty move rule}\n");
 }
-
-
-/* bench: This is a little benchmark code that calculates how many
-   nodes per second TSCP searches.
-   It sets the position to move 17 of Bobby Fischer vs. J. Sherwin,
-   New Jersey State Open Championship, 9/2/1957.
-   Then it searches five ply three times. It calculates nodes per
-   second from the best time. */
+   
+/* bench_default: sets position to move 17 of Bobby Fischer vs. J. Sherwin,
+   New Jersey State Open Championship, 9/2/1957. */
 
 int bench_color[64] = {
 	6, 1, 1, 6, 6, 1, 1, 6,
@@ -459,16 +462,9 @@ int bench_piece[64] = {
 	3, 6, 2, 6, 3, 6, 5, 6
 };
 
-void bench()
-{
+void bench_default() {
 	int i;
-	int t[3];
-	double nps;
-
-	/* setting the position to a non-initial position confuses the opening
-	   book code. */
-	close_book();
-
+	
 	for (i = 0; i < 64; ++i) {
 		color[i] = bench_color[i];
 		piece[i] = bench_piece[i];
@@ -480,6 +476,199 @@ void bench()
 	fifty = 0;
 	ply = 0;
 	hply = 0;
+}
+
+/* bench_parse: sets up board based on FEN notation string. 
+   It calls bench_default() instead if there is an "obvious" error 
+   (though it does not attempt to catch all errors). */
+
+void bench_parse(char *fen) {
+	char *pch, ch, next_ch;
+	int sq, offset;
+	
+	if (fen == NULL) {
+		bench_default();
+		return;
+	}
+	
+	// board array setup
+	if ((pch = strtok(fen, " ")) == NULL) {
+		printf("FEN string lacks board descriptor.\n");
+		bench_default();
+		return;
+	}
+	
+	for (sq = 0; sq < 64; sq++) {
+		color[sq] = EMPTY;
+		piece[sq] = EMPTY;
+	}
+	
+	sq = A8;
+	while ((ch = *pch++) != '\0') {
+		if (ch == '/') {
+			next_ch = *pch;
+			if (COL(sq) != 0 || next_ch == '/' || next_ch == '\0')
+				break;
+		} else if ('1' <= ch && ch <= '8') {
+			offset = ch - '0';
+			if (COL(sq) + offset > 8)
+				break;
+			sq += offset;
+		} else {
+			color[sq] = isupper(ch) ? LIGHT : DARK;
+			switch (tolower(ch)) {
+			case 'p':
+				piece[sq] = PAWN;
+				break;
+			case 'n':
+				piece[sq] = KNIGHT;
+				break;
+			case 'b':
+				piece[sq] = BISHOP;
+				break;
+			case 'r':
+				piece[sq] = ROOK;
+				break;
+			case 'q':
+				piece[sq] = QUEEN;
+				break;
+			case 'k':
+				piece[sq] = KING;
+				break;
+			}
+			if (piece[sq] == EMPTY)
+				break;
+			sq++;
+		}
+	}
+	if (ch != '\0' || sq != 64) { // interrupted by error, or board not filled
+		print_board();
+		printf("FEN board parse error: char = %c, square = %d.\n", ch, sq);
+		bench_default();
+		return;
+	}
+	
+	// side to move setup
+	if ((pch = strtok(NULL, " ")) == NULL) {
+		printf("FEN string lacks side to move descriptor.\n");
+		bench_default();
+		return;
+	}
+	
+	ch = *pch;	
+	if (ch == 'w') {
+		side = LIGHT;
+		xside = DARK;
+	} else if (ch == 'b') {		
+		side = DARK;
+		xside = LIGHT;
+	} else {
+		printf("FEN invalid side to move argument: %c.\n", ch);
+		bench_default();
+		return;
+	}
+	
+	// castling setup
+	if ((pch = strtok(NULL, " ")) == NULL) {
+		printf("FEN string lacks castling descriptor.\n");
+		bench_default();
+		return;
+	}
+	
+	castle = 0;
+	
+	if (*pch != '-') {
+		while ((ch = *pch++) != '\0') {
+			switch (ch) {
+			case 'K':
+				castle |= 1;
+				break;
+			case 'Q':
+				castle |= 2;
+				break;
+			case 'k':
+				castle |= 4;
+				break;
+			case 'q':
+				castle |= 8;
+				break;
+			default:
+				printf("FEN invalid castling argument: %c.\n", ch);
+				bench_default();
+				return;
+			}
+		}
+	}
+
+	// en passant setup
+	if ((pch = strtok(NULL, " ")) == NULL) {
+		printf("FEN string lacks en passant descriptor.\n");
+		bench_default();
+		return;
+	}
+	
+	ep = -1;
+	
+	if (*pch != '-') {
+		ch = *pch;
+		next_ch = *(pch + 1);
+		if (ch < 'a' || 'h' < ch || next_ch < '1' || '8' < next_ch) {
+			printf("FEN invalid en passant string: %c%c.\n", ch, next_ch);
+			bench_default();
+			return;
+		}
+		ep = (ch - 'a') + ('8' - next_ch) * 8;
+	}
+	
+	// half move clock setup
+	if ((pch = strtok(NULL, " ")) == NULL) {
+		printf("FEN string lacks half move clock descriptor.\n");
+		bench_default();
+		return;
+	}
+	
+	fifty = atoi(pch);
+	
+	if (fifty < 0) {
+		printf("FEN invalid half move clock value: %d.\n", fifty);
+		bench_default();
+		return;
+	}
+	
+	// full move clock setup	
+	if ((pch = strtok(NULL, " ")) == NULL) {
+		printf("FEN string lacks full moves descriptor.\n");
+		bench_default();
+		return;
+	}
+	
+	ply = 0;
+	hply = atoi(pch);
+	
+	if (hply < 1) {
+		printf("FEN invalid full moves value: %d.\n", hply);
+		bench_default();
+		return;
+	}
+}
+
+/* bench: This is a little benchmark code that calculates how many
+   nodes per second TSCP searches.
+   Then it searches five ply three times. It calculates nodes per
+   second from the best time. */
+   
+void bench(char *fen)
+{
+	int i;
+	int t[3];
+	double nps;
+
+	/* setting the position to a non-initial position confuses the opening
+	   book code. */
+	close_book();
+
+	bench_parse(fen); // set up board
+
 	set_hash();
 	print_board();
 	max_time = 1 << 25;
