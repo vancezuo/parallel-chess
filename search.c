@@ -1,21 +1,21 @@
 /*
  *	SEARCH.C
- *	Tom Kerrigan's Simple Chess Program (TSCP)
+ *	Tom Kerrigan's Simple Chess Program (TSCP), modified
  *
  *	Copyright 1997 Tom Kerrigan
+ *  Modifications: Copyright 2014 Vance Zuo
  */
 
 
 #include <stdio.h>
 #include <string.h>
+#include <omp.h>
 #include "defs.h"
 #include "data.h"
 #include "protos.h"
 
 
-/* see the beginning of think() */
-#include <setjmp.h>
-jmp_buf env;
+/* boolean for when search should stop */
 BOOL stop_search;
 
 
@@ -34,18 +34,6 @@ void think(int output)
 	if (pv[0][0].u != -1)
 		return;
 
-	/* some code that lets us longjmp back here and return
-	   from think() when our time is up */
-	stop_search = FALSE;
-	setjmp(env);
-	if (stop_search) {
-		
-		/* make sure to take back the line we were searching */
-		while (ply)
-			takeback();
-		return;
-	}
-
 	start_time = get_ms();
 	stop_time = start_time + max_time;
 
@@ -56,23 +44,34 @@ void think(int output)
 	memset(history, 0, sizeof(history));
 	if (output == 1)
 		printf("ply      nodes  score  pv\n");
-	for (i = 1; i <= max_depth; ++i) {
+		
+	stop_search = FALSE;
+	for (i = 1; i <= max_depth && !stop_search; ++i) {
 		follow_pv = TRUE;
 		x = search(-10000, 10000, i);
+		if (stop_search)
+			continue;
+			
 		if (output == 1)
 			printf("%3d  %9d  %5d ", i, nodes, x);
 		else if (output == 2)
-			printf("%d %d %d %d",
-					i, x, (get_ms() - start_time) / 10, nodes);
+			printf("%d %d %d %d", i, x, (get_ms() - start_time) / 10, nodes);
 		if (output) {
 			for (j = 0; j < pv_length[0]; ++j)
 				printf(" %s", move_str(pv[0][j].b));
 			printf("\n");
 			fflush(stdout);
 		}
-		if (x > 9000 || x < -9000)
-			break;
+		
+		if (x > 9000 || x < -9000) {
+			stop_search = TRUE;
+			continue;
+		}
 	}
+	
+	/* make sure to take back the line we were searching */
+	while (ply)
+		takeback();
 }
 
 
@@ -90,8 +89,8 @@ int search(int alpha, int beta, int depth)
 	++nodes;
 
 	/* do some housekeeping every 1024 nodes */
-	if ((nodes & 1023) == 0)
-		checkup();
+	if ((nodes & 1023) == 0 && timeout())
+		return stop_search;
 
 	pv_length[ply] = ply;
 
@@ -159,7 +158,7 @@ int search(int alpha, int beta, int depth)
 
 
 /* quiesce() is a recursive minimax search function with
-   alpha-beta cutoffs. In other words, negamax. It basically
+   alpha-beta cutoffs. In other words, negamax. But it
    only searches capture sequences and allows the evaluation
    function to cut the search off (and set alpha). The idea
    is to find a position where there isn't a lot going on
@@ -172,8 +171,8 @@ int quiesce(int alpha,int beta)
 	++nodes;
 
 	/* do some housekeeping every 1024 nodes */
-	if ((nodes & 1023) == 0)
-		checkup();
+	if ((nodes & 1023) == 0 && timeout())
+		return stop_search;
 
 	pv_length[ply] = ply;
 
@@ -280,14 +279,13 @@ void sort(int from)
 }
 
 
-/* checkup() is called once in a while during the search. */
+/* timeout() checks if the engine's time limit is up. */
 
-void checkup()
+BOOL timeout()
 {
-	/* is the engine's time up? if so, longjmp back to the
-	   beginning of think() */
 	if (get_ms() >= stop_time) {
 		stop_search = TRUE;
-		longjmp(env, 0);
+		return TRUE;
 	}
+	return FALSE;
 }

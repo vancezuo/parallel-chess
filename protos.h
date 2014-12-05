@@ -1,8 +1,9 @@
 /*
  *	PROTOS.H
- *	Tom Kerrigan's Simple Chess Program (TSCP)
+ *	Tom Kerrigan's Simple Chess Program (TSCP), modified
  *
  *	Copyright 1997 Tom Kerrigan
+ *  Modifications: Copyright 2014 Vance Zuo
  */
 
 #ifndef PROTOS_H
@@ -37,7 +38,7 @@ int quiesce(int alpha, int beta);
 int reps();
 void sort_pv();
 void sort(int from);
-void checkup();
+BOOL timeout();
 
 /* eval.c */
 int eval();
