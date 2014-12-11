@@ -40,6 +40,7 @@ int main()
 {
 	int computer_side;
 	char s[256];
+	int autoplay;
 	int last;
 	int m;
 
@@ -56,18 +57,22 @@ int main()
 	open_book();
 	gen();
 	computer_side = EMPTY;
+	autoplay = FALSE;
 	max_time = 1 << 25;
 	max_depth = 4;
 	for (;;) {
-		if (side == computer_side) {  /* computer's turn */
+		if (autoplay || side == computer_side) {  /* computer's turn */
 			
 			/* think about the move and make it */
 			think(1);
 			if (!pv[0][0].u) {
 				printf("(no legal moves)\n");
 				computer_side = EMPTY;
+				autoplay = FALSE;
 				continue;
 			}
+			printf("Time: %d ms\n", get_ms() - start_time);
+			printf("Nodes: %d\n", nodes);
 			printf("Computer's move: %s\n", move_str(pv[0][0].b));
 			makemove(pv[0][0].b);
 			ply = 0;
@@ -86,6 +91,10 @@ int main()
 		}
 		if (!strcmp(s, "off")) {
 			computer_side = EMPTY;
+			continue;
+		}
+		if (!strcmp(s, "auto")) {
+			autoplay = TRUE;
 			continue;
 		}
 		if (!strcmp(s, "st")) {
@@ -138,12 +147,13 @@ int main()
 		if (!strcmp(s, "help")) {
 			printf("on - computer plays for the side to move\n");
 			printf("off - computer stops playing\n");
+			printf("auto - computer plays automatically, until game ends\n");
 			printf("st n - search for n seconds per move\n");
 			printf("sd n - search n ply per move\n");
 			printf("undo - takes back a move\n");
 			printf("new - starts a new game\n");
 			printf("d - display the board\n");
-			printf("bench [fen] - benchmark built-in, or fen position\n");
+			printf("bench [fen] - benchmark built-in, or fen, position\n");
 			printf("bye - exit the program\n");
 			printf("xboard - switch to XBoard mode\n");
 			printf("Enter moves in coordinate notation, e.g., e2e4, e7e8Q\n");
@@ -486,14 +496,8 @@ void bench_parse(char *fen) {
 	char *pch, ch, next_ch;
 	int sq, offset;
 	
-	if (fen == NULL) {
-		bench_default();
-		return;
-	}
-	
 	// board array setup
-	if ((pch = strtok(fen, " ")) == NULL) {
-		printf("FEN string lacks board descriptor.\n");
+	if (fen == NULL || (pch = strtok(fen, " ")) == NULL) {
 		bench_default();
 		return;
 	}
