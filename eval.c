@@ -1,24 +1,17 @@
 /*
  *	EVAL.C
- *	Tom Kerrigan's Simple Chess Program (TSCP)
+ *	Tom Kerrigan's Simple Chess Program (TSCP), modified
  *
  *	Copyright 1997 Tom Kerrigan
+ *  Modifications: Copyright 2014 Vance Zuo
  */
 
 
 #include <string.h>
+#include <stdio.h>
 #include "defs.h"
 #include "data.h"
 #include "protos.h"
-
-
-#define DOUBLED_PAWN_PENALTY		10
-#define ISOLATED_PAWN_PENALTY		20
-#define BACKWARDS_PAWN_PENALTY		8
-#define PASSED_PAWN_BONUS			20
-#define ROOK_SEMI_OPEN_FILE_BONUS	10
-#define ROOK_OPEN_FILE_BONUS		15
-#define ROOK_ON_SEVENTH_BONUS		20
 
 
 /* the values of the pieces */
@@ -110,12 +103,15 @@ int pawn_rank[2][10];
 int piece_mat[2];  /* the value of a side's pieces */
 int pawn_mat[2];  /* the value of a side's pawns */
 
+#pragma omp threadprivate(color, piece, side)
+#pragma omp threadprivate(pawn_rank, piece_mat, pawn_mat)
+
 int eval()
 {
 	int i;
 	int f;  /* file */
 	int score[2];  /* each side's score */
-
+	
 	/* this is the first pass: set up pawn_rank, piece_mat, and pawn_mat. */
 	for (i = 0; i < 10; ++i) {
 		pawn_rank[LIGHT][i] = 0;

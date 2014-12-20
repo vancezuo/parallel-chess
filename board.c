@@ -11,6 +11,12 @@
 #include "data.h"
 #include "protos.h"
 
+#pragma omp threadprivate(color, piece)
+#pragma omp threadprivate(side, xside, castle, ep, fifty, hash, ply, hply)
+#pragma omp threadprivate(gen_dat, first_move)
+#pragma omp threadprivate(hist_dat)
+#pragma omp threadprivate(pv, pv_length, follow_pv)
+
 
 /* init_board() sets the board to the initial game state. */
 

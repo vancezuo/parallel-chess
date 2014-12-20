@@ -49,6 +49,13 @@
 #define ROW(x)			(x >> 3)
 #define COL(x)			(x & 7)
 
+#define DOUBLED_PAWN_PENALTY		10
+#define ISOLATED_PAWN_PENALTY		20
+#define BACKWARDS_PAWN_PENALTY		8
+#define PASSED_PAWN_BONUS			20
+#define ROOK_SEMI_OPEN_FILE_BONUS	10
+#define ROOK_OPEN_FILE_BONUS		15
+#define ROOK_ON_SEVENTH_BONUS		20
 
 /* This is the basic description of a move. promote is what
    piece to promote the pawn to, if the move is a pawn

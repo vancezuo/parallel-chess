@@ -14,9 +14,19 @@
 #include "data.h"
 #include "protos.h"
 
+// private data structures for parallel search
+#pragma omp threadprivate(color, piece)
+#pragma omp threadprivate(side, xside, castle, ep, fifty, hash, ply, hply)
+#pragma omp threadprivate(gen_dat, first_move)
+#pragma omp threadprivate(hist_dat)
+#pragma omp threadprivate(pv, pv_length, follow_pv)
 
-/* boolean for when search should stop */
+#pragma omp threadprivate(pawn_rank, piece_mat, pawn_mat)
+
+
+/* booleans for when search should stop */
 BOOL stop_search;
+BOOL cutoff;
 
 
 /* think() calls search() iteratively. Search statistics
@@ -46,11 +56,12 @@ void think(int output)
 		printf("ply      nodes  score  pv\n");
 		
 	stop_search = FALSE;
-	for (i = 1; i <= max_depth && !stop_search; ++i) {
+	cutoff = FALSE;
+	for (i = 1; i <= max_depth; ++i) {
 		follow_pv = TRUE;
-		x = search(-10000, 10000, i);
+		x = (*search_func)(-10000, 10000, i);
 		if (stop_search)
-			continue;
+			break;
 			
 		if (output == 1)
 			printf("%3d  %9d  %5d ", i, nodes, x);
@@ -63,10 +74,8 @@ void think(int output)
 			fflush(stdout);
 		}
 		
-		if (x > 9000 || x < -9000) {
-			stop_search = TRUE;
-			continue;
-		}
+		if (x > 9000 || x < -9000)
+			break;
 	}
 	
 	/* make sure to take back the line we were searching */
@@ -85,12 +94,14 @@ int search(int alpha, int beta, int depth)
 	/* we're as deep as we want to be; call quiesce() to get
 	   a reasonable score and return it. */
 	if (!depth)
-		return quiesce(alpha,beta);
+		return (*quiesce_func)(alpha,beta);
+
+	#pragma omp atomic
 	++nodes;
 
 	/* do some housekeeping every 1024 nodes */
 	if ((nodes & 1023) == 0 && timeout())
-		return stop_search;
+		return alpha;
 
 	pv_length[ply] = ply;
 
@@ -103,17 +114,20 @@ int search(int alpha, int beta, int depth)
 
 	/* are we too deep? */
 	if (ply >= MAX_PLY - 1)
-		return eval();
+		return (*eval_func)();
 	if (hply >= HIST_STACK - 1)
-		return eval();
+		return (*eval_func)();
 
 	/* are we in check? if so, we want to search deeper */
 	c = in_check(side);
 	if (c)
 		++depth;
+		
 	gen();
+	
 	if (follow_pv)  /* are we following the PV? */
 		sort_pv();
+		
 	f = FALSE;
 
 	/* loop through the moves */
@@ -124,6 +138,8 @@ int search(int alpha, int beta, int depth)
 		f = TRUE;
 		x = -search(-beta, -alpha, depth - 1);
 		takeback();
+		if (stop_search)
+			return alpha;
 		if (x > alpha) {
 
 			/* this move caused a cutoff, so increase the history
@@ -157,6 +173,121 @@ int search(int alpha, int beta, int depth)
 }
 
 
+/* psearch() does search in parallel by splitting the root node */
+
+int psearch(int alpha, int beta, int depth)
+{
+	int i, j, x;
+	BOOL c, f;
+
+	/* we're as deep as we want to be; call quiesce() to get
+	   a reasonable score and return it. */
+	if (!depth)
+		return (*quiesce_func)(alpha,beta);
+
+	++nodes;
+
+	/* do some housekeeping every 1024 nodes */
+	if ((nodes & 1023) == 0 && timeout())
+		return alpha;
+
+	pv_length[ply] = ply;
+
+	/* if this isn't the root of the search tree (where we have
+	   to pick a move and can't simply return 0) then check to
+	   see if the position is a repeat. if so, we can assume that
+	   this line is a draw and return 0. */
+	if (ply && reps())
+		return 0;
+
+	/* are we too deep? */
+	if (ply >= MAX_PLY - 1)
+		return (*eval_func)();
+	if (hply >= HIST_STACK - 1)
+		return (*eval_func)();
+
+	/* are we in check? if so, we want to search deeper */
+	c = in_check(side);
+	if (c)
+		++depth;
+		
+	gen();
+	
+	if (follow_pv)  /* are we following the PV? */
+		sort_pv();
+		
+	f = FALSE;
+	cutoff = FALSE;
+	best_pv_length = 0;
+	
+	for (i = first_move[ply]; i < first_move[ply + 1]; ++i)
+		sort(i);
+		
+	// omp_synchronize_state();
+	/* loop through the moves */
+	#pragma omp parallel for schedule(dynamic,1) copyin(color, piece, \
+			side, xside, castle, ep, fifty, hash, ply, hply, \
+			gen_dat, first_move,  hist_dat, pv, pv_length, follow_pv) \
+			private(i, j, x)
+	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
+		if (stop_search || cutoff || !makemove(gen_dat[i].m.b))
+			continue;
+		f = TRUE;
+		x = -search(-beta, -alpha, depth - 1);
+		takeback();
+		// printf("Move %d (%s)... %d [%d]\n", i, move_str(gen_dat[i].m.b), x, omp_get_thread_num());
+		#pragma omp critical
+		if (x > alpha && !cutoff) {
+			/* this move caused a cutoff, so increase the history
+			   value so it gets ordered high next time we can
+			   search it */
+			history[(int)gen_dat[i].m.b.from][(int)gen_dat[i].m.b.to] += depth;
+			if (x >= beta) {
+				cutoff = TRUE;
+			} else {
+				alpha = x;
+
+				// update the (local) PV
+				best_pv[ply] = pv[ply][ply] = gen_dat[i].m;
+				for (j = ply + 1; j < pv_length[ply + 1]; ++j)
+					best_pv[j] = pv[ply][j] = pv[ply + 1][j];
+				best_pv_length = pv_length[ply] = pv_length[ply + 1];
+				
+				// printf("\tPV %d ", x);
+				// for (j = 0; j < best_pv_length; ++j)
+					// printf(" %s", move_str(best_pv[j].b));
+				// printf("\n");
+				// fflush(stdout);
+			}
+		}
+	}
+	
+	// update the PV
+	if (best_pv_length > 0) {
+		pv[ply][ply] = best_pv[ply];
+		for (j = ply + 1; j < best_pv_length; ++j)
+			pv[ply][j] = best_pv[j];
+		pv_length[ply] = best_pv_length;
+	}
+
+	if (cutoff)
+		return beta;
+	
+	/* no legal moves? then we're in checkmate or stalemate */
+	if (!f) {
+		if (c)
+			return -10000 + ply;
+		else
+			return 0;
+	}
+
+	/* fifty move draw rule */
+	if (fifty >= 100)
+		return 0;
+	return alpha;
+}
+
+
 /* quiesce() is a recursive minimax search function with
    alpha-beta cutoffs. In other words, negamax. But it
    only searches capture sequences and allows the evaluation
@@ -167,32 +298,33 @@ int search(int alpha, int beta, int depth)
 int quiesce(int alpha,int beta)
 {
 	int i, j, x;
-
+	
+	#pragma omp atomic
 	++nodes;
 
 	/* do some housekeeping every 1024 nodes */
 	if ((nodes & 1023) == 0 && timeout())
-		return stop_search;
+		return alpha;
 
 	pv_length[ply] = ply;
 
 	/* are we too deep? */
 	if (ply >= MAX_PLY - 1)
-		return eval();
+		return (*eval_func)();
 	if (hply >= HIST_STACK - 1)
-		return eval();
+		return (*eval_func)();
 
 	/* check with the evaluation function */
-	x = eval();
+	x = (*eval_func)();
 	if (x >= beta)
 		return beta;
 	if (x > alpha)
 		alpha = x;
-
+		
 	gen_caps();
 	if (follow_pv)  /* are we following the PV? */
 		sort_pv();
-
+	
 	/* loop through the moves */
 	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
 		sort(i);
@@ -200,6 +332,9 @@ int quiesce(int alpha,int beta)
 			continue;
 		x = -quiesce(-beta, -alpha);
 		takeback();
+		// printf("\tMove %d (%s)... %d [%d]\n", i, move_str(gen_dat[i].m.b), x, omp_get_thread_num());
+		if (stop_search || cutoff)
+			return alpha;
 		if (x > alpha) {
 			if (x >= beta)
 				return beta;
@@ -210,8 +345,124 @@ int quiesce(int alpha,int beta)
 			for (j = ply + 1; j < pv_length[ply + 1]; ++j)
 				pv[ply][j] = pv[ply + 1][j];
 			pv_length[ply] = pv_length[ply + 1];
+				
+			// printf("\tPV %d ", x);
+			// for (j = 0; j < best_pv_length; ++j)
+				// printf(" %s", move_str(best_pv[j].b));
+			// printf("\n");
+			// fflush(stdout);
 		}
 	}
+	return alpha;
+}
+
+
+/* pquiesce() is a parallel version of quiesce(). */
+
+int pquiesce(int alpha,int beta)
+{
+	int i, j, x;
+	move best;
+	
+	++nodes;
+
+	/* do some housekeeping every 1024 nodes */
+	if ((nodes & 1023) == 0 && timeout())
+		return alpha;
+
+	pv_length[ply] = ply;
+
+	/* are we too deep? */
+	if (ply >= MAX_PLY - 1)
+		return (*eval_func)();
+	if (hply >= HIST_STACK - 1)
+		return (*eval_func)();
+
+	/* check with the evaluation function */
+	x = (*eval_func)();
+	if (x >= beta)
+		return beta;
+	if (x > alpha)
+		alpha = x;
+
+	gen_caps();
+	if (follow_pv)  /* are we following the PV? */
+		sort_pv();
+
+	cutoff = FALSE;
+	best_pv_length = 0;
+			
+	/* loop through the moves */
+	for (i = first_move[ply]; i < first_move[ply + 1]; ++i)
+		sort(i);
+
+	// omp_synchronize_state();
+	// #pragma omp parallel for ordered schedule(dynamic,1) private(i, j, x)
+	#pragma omp parallel for schedule(dynamic,1) copyin(color, piece, \
+			side, xside, castle, ep, fifty, hash, ply, hply, \
+			gen_dat, first_move,  hist_dat, pv, pv_length, follow_pv) \
+			private(i, j, x)
+	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
+		if (stop_search || cutoff || !makemove(gen_dat[i].m.b))
+			continue;
+		x = -quiesce(-beta, -alpha);
+		takeback();
+		#pragma omp critical
+		if (x > alpha && !cutoff) {
+			if (x >= beta) {
+				cutoff = TRUE;
+			} else {
+				alpha = x;
+
+				// update the (local) PV
+				best_pv[ply] = pv[ply][ply] = gen_dat[i].m;
+				for (j = ply + 1; j < pv_length[ply + 1]; ++j)
+					best_pv[j] = pv[ply][j] = pv[ply + 1][j];
+				best_pv_length = pv_length[ply] = pv_length[ply + 1];
+			}
+		}
+	} // */
+	
+	/* #pragma omp parallel private(i, x) copyin(color, piece, side, xside, \
+			castle, ep, fifty, hash, ply, hply, gen_dat, first_move, \
+			pv, pv_length, follow_pv) num_threads(1)
+	{
+	#pragma omp master
+	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
+		#pragma omp task 
+		{
+		if (!stop_search && !cutoff && makemove(gen_dat[i].m.b)) {
+			x = -quiesce(-beta, -alpha);
+			takeback();
+			#pragma omp critical (quiesce_check)
+			if (x > alpha) {
+				if (x >= beta) {
+					cutoff = TRUE;
+				} else {
+					alpha = x;
+
+					// update the (local) PV
+					best_pv[ply] = pv[ply][ply] = gen_dat[i].m;
+					for (j = ply + 1; j < pv_length[ply + 1]; ++j)
+						best_pv[j] = pv[ply][j] = pv[ply + 1][j];
+					best_pv_length = pv_length[ply] = pv_length[ply + 1];
+				}
+			}
+		}
+		}
+	}
+	} // */	
+	
+	// update the PV
+	if (best_pv_length > 0) {
+		pv[ply][ply] = best_pv[ply];
+		for (j = ply + 1; j < best_pv_length; ++j)
+			pv[ply][j] = best_pv[j];
+		pv_length[ply] = best_pv_length;
+	}
+	
+	if (cutoff)
+		return beta;	
 	return alpha;
 }
 
@@ -288,4 +539,64 @@ BOOL timeout()
 		return TRUE;
 	}
 	return FALSE;
+}
+
+
+/* omp_synchronize_state() copies the master's board state to the board state 
+   of other OpenMP threads. */
+   
+void omp_synchronize_state() {
+	int master_color[64];
+	int master_piece[64];
+	int master_side;
+	int master_xside;
+	int master_castle;
+	int master_ep;
+	int master_fifty;
+	int master_hash;
+	int master_ply;
+	int master_hply;
+	gen_t master_gen_dat[GEN_STACK];
+	int master_first_move[MAX_PLY];
+	hist_t master_hist_dat[HIST_STACK];
+	move master_pv[MAX_PLY][MAX_PLY];
+	int master_pv_length[MAX_PLY];
+	BOOL master_follow_pv;
+	
+	memcpy(master_color, color, sizeof(color));
+	memcpy(master_piece, piece, sizeof(piece));
+	master_side = side;
+	master_xside = xside;
+	master_castle = castle;
+	master_ep = ep;
+	master_fifty = fifty;
+	master_hash = hash;
+	master_ply = ply;
+	master_hply = hply;
+	memcpy(master_gen_dat, gen_dat, sizeof(gen_dat));
+	memcpy(master_first_move, first_move, sizeof(first_move));
+	memcpy(master_hist_dat, hist_dat, sizeof(hist_dat));
+	memcpy(master_pv, pv, sizeof(pv));
+	memcpy(master_pv_length, pv_length, sizeof(pv_length));
+	master_follow_pv = follow_pv;
+	
+	#pragma omp parallel
+	{
+	memcpy(color, master_color, sizeof(color));
+	memcpy(piece, master_piece, sizeof(piece));
+	side = master_side;
+	xside = master_xside;
+	castle = master_castle;
+	ep = master_ep;
+	fifty = master_fifty;
+	hash = master_hash;
+	ply = master_ply;
+	hply = master_hply;
+	memcpy(gen_dat, master_gen_dat, sizeof(gen_dat));
+	memcpy(first_move, master_first_move, sizeof(first_move));
+	memcpy(hist_dat, master_hist_dat, sizeof(hist_dat));
+	memcpy(pv, master_pv, sizeof(pv));
+	memcpy(pv_length, master_pv_length, sizeof(pv_length));
+	follow_pv = master_follow_pv;
+	}
 }

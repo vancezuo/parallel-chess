@@ -12,10 +12,10 @@
 #include <string.h>
 #include <signal.h>
 #include <ctype.h>
+#include <omp.h>
 #include "defs.h"
 #include "data.h"
 #include "protos.h"
-
 
 /* get_ms() returns the milliseconds elapsed since midnight,
    January 1, 1970. */
@@ -59,7 +59,15 @@ int main()
 	computer_side = EMPTY;
 	autoplay = FALSE;
 	max_time = 1 << 25;
-	max_depth = 4;
+	max_depth = 5;
+	
+	eval_func = &eval;
+	quiesce_func = &quiesce;
+	search_func = &search;
+	
+	omp_set_dynamic(FALSE);
+	threads = omp_get_max_threads();
+	
 	for (;;) {
 		if (autoplay || side == computer_side) {  /* computer's turn */
 			
@@ -133,7 +141,33 @@ int main()
 			if (last >= 0 && s[last] == '\n')
 				s[last] = '\0';
 			computer_side = EMPTY;
-			bench(s);
+			bench(s, 1);
+			continue;
+		}
+		if (!strcmp(s, "p")) {
+			eval_func = &eval;
+			quiesce_func = &quiesce;
+			search_func = &search;
+			while ((s[0] = getchar()) == ' ')
+				;
+			if (s[0] == 'e') {
+				eval_func = &peval;
+				printf("Using parallel static evaluation.\n");
+			} else if (s[0] == 'q') {
+				quiesce_func = &pquiesce;
+				printf("Using parallel quiescence search function.\n");
+			} else if (s[0] == 'r') {
+				search_func = &psearch;
+				printf("Using parallel alpha-beta search function.\n");
+			} else {
+				printf("Reset to serial functions.\n");
+			}
+			continue;
+		}
+		if (!strcmp(s, "t")) {
+			scanf("%d", &threads);
+			omp_set_num_threads(threads);
+			printf("Set to use %d threads.\n", threads);
 			continue;
 		}
 		if (!strcmp(s, "bye")) {
@@ -148,12 +182,17 @@ int main()
 			printf("on - computer plays for the side to move\n");
 			printf("off - computer stops playing\n");
 			printf("auto - computer plays automatically, until game ends\n");
-			printf("st n - search for n seconds per move\n");
-			printf("sd n - search n ply per move\n");
+			printf("st n - set search time to n seconds per move\n");
+			printf("sd n - set search depth to n ply per move\n");
 			printf("undo - takes back a move\n");
 			printf("new - starts a new game\n");
 			printf("d - display the board\n");
 			printf("bench [fen] - benchmark built-in, or fen, position\n");
+			printf("p [e|q|r] - set parallel function (rest use serial)\n");
+			printf("    e = parallel static evaluation\n");
+			printf("    q = parallel quiescence search\n");
+			printf("    r = parallel (root-splitting) alpha-beta search\n");
+			printf("t n - set number of threads to n\n");
 			printf("bye - exit the program\n");
 			printf("xboard - switch to XBoard mode\n");
 			printf("Enter moves in coordinate notation, e.g., e2e4, e7e8Q\n");
@@ -284,6 +323,16 @@ void print_board()
 	printf("\n\n   a b c d e f g h\n\n");
 }
 
+void print_raw(int matrix[64])
+{
+    int i, j;
+    for (i = 0; i < 8; ++i)
+    {
+        for (j = 0; j < 8; ++j)
+            printf("%d ", matrix[i*8 + j]);
+        printf("\n");
+    }
+}
 
 /* xboard() is a substitute for main() that is XBoard
    and WinBoard compatible. See the following page for details:
@@ -654,17 +703,19 @@ void bench_parse(char *fen) {
 		bench_default();
 		return;
 	}
+	
+	printf("Loaded: %s\n", fen);
 }
 
 /* bench: This is a little benchmark code that calculates how many
    nodes per second TSCP searches.
-   Then it searches five ply three times. It calculates nodes per
+   Then it searches iterations times. It calculates nodes per
    second from the best time. */
    
-void bench(char *fen)
+void bench(char *fen, int iterations)
 {
-	int i;
-	int t[3];
+	int i, best_time, best_nodes;
+	int t[iterations];
 	double nps;
 
 	/* setting the position to a non-initial position confuses the opening
@@ -675,20 +726,19 @@ void bench(char *fen)
 
 	set_hash();
 	print_board();
-	max_time = 1 << 25;
-	max_depth = 5;
-	for (i = 0; i < 3; ++i) {
+	// max_time = 1 << 25;
+	// max_depth = 5;
+	for (i = 0; i < iterations; ++i) {
 		think(1);
 		t[i] = get_ms() - start_time;
+		if (t[i] < best_time) {
+			best_time = t[i];
+			best_nodes = nodes;
+		}
+		nps = (double)nodes / (double)t[0] * 1000;
 		printf("Time: %d ms\n", t[i]);
+		printf("Nodes: %d (%d per second)\n", nodes, (int)nps);
 	}
-	if (t[1] < t[0])
-		t[0] = t[1];
-	if (t[2] < t[0])
-		t[0] = t[2];
-	printf("\n");
-	printf("Nodes: %d\n", nodes);
-	printf("Best time: %d ms\n", t[0]);
 	if (!ftime_ok) {
 		printf("\n");
 		printf("Your compiler's ftime() function is apparently only accurate\n");
@@ -697,15 +747,20 @@ void bench(char *fen)
 		printf("\n");
 		return;
 	}
-	if (t[0] == 0) {
-		printf("(invalid)\n");
-		return;
-	}
-	nps = (double)nodes / (double)t[0];
-	nps *= 1000.0;
+	if (iterations > 1) {
+		printf("\n");
+		printf("Best time: %d ms\n", t[i]);
+		
+		if (t[i] == 0) {
+			printf("(invalid)\n");
+			return;
+		}
+		nps = (double)nodes / (double)t[i];
+		nps *= 1000.0;
 
-	/* Score: 1.000 = my Athlon XP 2000+ */
-	printf("Nodes per second: %d (Score: %.3f)\n", (int)nps, (float)nps/243169.0);
+		/* Score: 1.000 = my Athlon XP 2000+ */
+		printf("Nodes per second: %d (Score: %.3f)\n", (int)nps, (float)nps/243169.0);
+	}
 
 	init_board();
 	open_book();

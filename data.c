@@ -7,7 +7,14 @@
 
 
 #include "defs.h"
+#include <string.h>
 
+/* serial/parallel switches for different functions */
+int (*eval_func)();
+int (*quiesce_func)(int, int);
+int (*search_func)(int, int, int);
+
+int threads;
 
 /* the board representation */
 int color[64];  /* LIGHT, DARK, or EMPTY */
@@ -28,7 +35,7 @@ int ply;  /* the number of half-moves (ply) since the
              root of the search tree */
 int hply;  /* h for history; the number of ply since the beginning
               of the game */
-
+			  
 /* gen_dat is some memory for move lists that are created by the move
    generators. The move list for ply n starts at first_move[n] and ends
    at first_move[n + 1]. */
@@ -58,6 +65,9 @@ int nodes;  /* the number of nodes we've searched */
 move pv[MAX_PLY][MAX_PLY];
 int pv_length[MAX_PLY];
 BOOL follow_pv;
+
+move best_pv[MAX_PLY]; // for parallel quiescence
+int best_pv_length;
 
 /* random numbers used to compute hash; see set_hash() in board.c */
 int hash_piece[2][6][64];  /* indexed by piece [color][type][square] */
@@ -123,7 +133,7 @@ int offset[6][8] = {
 	{ -11, -9, 9, 11, 0, 0, 0, 0 },
 	{ -10, -1, 1, 10, 0, 0, 0, 0 },
 	{ -11, -10, -9, -1, 1, 9, 10, 11 },
-	{ -11, -10, -9, -1, 1, 9, 10, 11 }
+	{ -11, -10, -9, -1, 1, 9, 10, 11 },
 };
 
 

@@ -34,11 +34,14 @@ BOOL book_match(char *s1, char *s2);
 /* search.c */
 void think(int output);
 int search(int alpha, int beta, int depth);
+int psearch(int alpha, int beta, int depth);
 int quiesce(int alpha, int beta);
+int pquiesce(int alpha, int beta);
 int reps();
 void sort_pv();
 void sort(int from);
 BOOL timeout();
+void omp_synchronize_state();
 
 /* eval.c */
 int eval();
@@ -49,14 +52,24 @@ int eval_lkp(int f);
 int eval_dark_king(int sq);
 int eval_dkp(int f);
 
+/* peval.c */
+int peval();
+int peval_light_pawn(int sq);
+int peval_dark_pawn(int sq);
+int peval_light_king(int sq);
+int peval_lkp(int f);
+int peval_dark_king(int sq);
+int peval_dkp(int f);
+
 /* main.c */
 int get_ms();
 int main();
 int parse_move(char *s);
 char *move_str(move_bytes m);
 void print_board();
+void print_raw(int[64]);
 void xboard();
 void print_result();
-void bench(char *fen);
+void bench(char *fen, int iterations);
 
 #endif /* PROTOS_H */
