@@ -243,10 +243,10 @@ int eval()
 }
 
 
-/* peval() is a parallelized copy of eval(). Doesn't yield speedups, but I
+/* p_eval() is a parallelized copy of eval(). Doesn't yield speedups, but I
    keep it as a demonstration. */
    
-int peval()
+int p_eval()
 {
 	int i;
 	int f;  /* file */

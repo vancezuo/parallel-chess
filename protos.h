@@ -34,10 +34,10 @@ BOOL book_match(char *s1, char *s2);
 /* search.c */
 void think(int output);
 int search(int alpha, int beta, int depth);
-int psearch(int alpha, int beta, int depth);
+int prs_search(int alpha, int beta, int depth);
 int pvs_search(int alpha, int beta, int depth);
 int quiesce(int alpha, int beta);
-int pquiesce(int alpha, int beta);
+int p_quiesce(int alpha, int beta);
 int reps();
 void sort_pv();
 void sort(int from);
@@ -46,7 +46,7 @@ void omp_synchronize_state();
 
 /* eval.c */
 int eval();
-int peval();
+int p_eval();
 int eval_light_pawn(int sq);
 int eval_dark_pawn(int sq);
 int eval_light_king(int sq);

@@ -151,13 +151,13 @@ int main()
 			while ((s[0] = getchar()) == ' ')
 				;
 			if (s[0] == 'e') {
-				eval_func = &peval;
+				eval_func = &p_eval;
 				printf("Using parallel static evaluation.\n");
 			} else if (s[0] == 'q') {
-				quiesce_func = &pquiesce;
+				quiesce_func = &p_quiesce;
 				printf("Using parallel quiescence search.\n");
 			} else if (s[0] == 'r') {
-				search_func = &psearch;
+				search_func = &prs_search;
 				printf("Using parallel root-splitting alpha-beta search.\n");
 			} else if (s[0] == 'v') {
 				search_func = &pvs_search;

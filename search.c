@@ -172,9 +172,9 @@ int search(int alpha, int beta, int depth)
 }
 
 
-/* psearch() does search in parallel by splitting the root node */
+/* prs_search() does search in parallel by splitting the root node */
 
-int psearch(int alpha, int beta, int depth)
+int prs_search(int alpha, int beta, int depth)
 {
 	int i, j, x;
 	BOOL c, f;
@@ -489,9 +489,9 @@ int quiesce(int alpha,int beta)
 }
 
 
-/* pquiesce() is a parallel version of quiesce(). */
+/* p_quiesce() is a parallel version of quiesce(). */
 
-int pquiesce(int alpha,int beta)
+int p_quiesce(int alpha,int beta)
 {
 	int i, j, x;
 	move best;
