@@ -24,6 +24,8 @@ CFLAGS = -g -O3 -Wall -std=c99 -fopenmp
 
 I have not tested this myself, though.
 
+By default the required OpenMP libraries are dynamically linked. For static linking, i.e. including the libraries inside the executable itself, add the `-openmp-link static` flag for ICC, `-static` flag for GCC.
+
 Usage
 -----
 Run `make` with included Makefile, or compile the code yourself. Then run the resulting executable `chess`. Type `help` into the command-line interface for a list of commands:
@@ -49,6 +51,6 @@ xboard - switch to XBoard mode
 Enter moves in coordinate notation, e.g., e2e4, e7e8Q
 ```
 
-Note the default time and depth limits are infinity and 5, respectively. The `bench` command follows these restrictions.
+The default time and depth limits are infinity and 5 but can be edited via `st` and `sd`, respectively. The `bench` command follows these settings.
 
-Only one parallel method can be used at a time, since they would otherwise interfere with each other. Executing `p` without arguments resets to using only serial functions.
+Only one parallel method can be used at a time, since they would interfere with each other. Executing `p` without arguments resets to using only serial functions. Because TSCP's fundamental algorithm is unchanged, each method yields the same results for a given depth and position, just at different speeds. Setting PV splitting on (`p v`) will get the fastest/strongest engine.
