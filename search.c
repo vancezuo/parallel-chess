@@ -350,11 +350,11 @@ int pvs_search(int alpha, int beta, int depth)
 				return beta;
 			alpha = x;
 
-			/* update the PV */
-			pv[ply][ply] = gen_dat[i0].m;
+			// update the (local) PV
+			best_pv[ply] = pv[ply][ply] = gen_dat[i0].m;
 			for (j = ply + 1; j < pv_length[ply + 1]; ++j)
-				pv[ply][j] = pv[ply + 1][j];
-			pv_length[ply] = pv_length[ply + 1];
+				best_pv[j] = pv[ply][j] = pv[ply + 1][j];
+			best_pv_length = pv_length[ply] = pv_length[ply + 1];
 		}
 		i0++;
 		break;
