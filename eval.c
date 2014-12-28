@@ -14,6 +14,15 @@
 #include "protos.h"
 
 
+#define DOUBLED_PAWN_PENALTY		10
+#define ISOLATED_PAWN_PENALTY		20
+#define BACKWARDS_PAWN_PENALTY		8
+#define PASSED_PAWN_BONUS			20
+#define ROOK_SEMI_OPEN_FILE_BONUS	10
+#define ROOK_OPEN_FILE_BONUS		15
+#define ROOK_ON_SEVENTH_BONUS		20
+
+
 /* the values of the pieces */
 int piece_value[6] = {
 	100, 300, 300, 500, 900, 0
@@ -98,19 +107,39 @@ int flip[64] = {
    logic later. If there's no pawn on a rank, we pretend the pawn is
    impossibly far advanced (0 for LIGHT and 7 for DARK). This makes it easy to
    test for pawns on a rank and it simplifies some pawn evaluation code. */
-int pawn_rank[2][10];
+int (*pawn_rank)[10];
 
-int piece_mat[2];  /* the value of a side's pieces */
-int pawn_mat[2];  /* the value of a side's pawns */
+int *piece_mat;  /* the value of a side's pieces */
+int *pawn_mat;  /* the value of a side's pawns */
 
 #pragma omp threadprivate(color, piece, side)
 #pragma omp threadprivate(pawn_rank, piece_mat, pawn_mat)
+
+// private versions for parallel search
+int priv_pawn_rank[2][10];
+int priv_piece_mat[2]; 
+int priv_pawn_mat[2];
+
+#pragma omp threadprivate(priv_pawn_rank, priv_piece_mat, priv_pawn_mat)
+
+// shared versions for parallel evaluation
+int shared_pawn_rank[2][10];
+int shared_piece_mat[2];
+int shared_pawn_mat[2];
+
+
+/* eval() returns the current position's static score, from the perspective
+   of the player to move. */
 
 int eval()
 {
 	int i;
 	int f;  /* file */
 	int score[2];  /* each side's score */
+	
+	pawn_rank = priv_pawn_rank;
+	piece_mat = priv_piece_mat;
+	pawn_mat = priv_pawn_mat;
 	
 	/* this is the first pass: set up pawn_rank, piece_mat, and pawn_mat. */
 	for (i = 0; i < 10; ++i) {
@@ -212,6 +241,136 @@ int eval()
 		return score[LIGHT] - score[DARK];
 	return score[DARK] - score[LIGHT];
 }
+
+
+/* peval() is a parallelized copy of eval(). Doesn't yield speedups, but I
+   keep it as a demonstration. */
+   
+int peval()
+{
+	int i;
+	int f;  /* file */
+	int score[2];  /* each side's score */
+	
+	#pragma omp parallel copyin(color, piece, side)
+	{
+	pawn_rank = shared_pawn_rank;
+	piece_mat = shared_piece_mat;
+	pawn_mat = shared_pawn_mat;
+	
+	#pragma omp single
+	{
+	/* this is the first pass: set up pawn_rank, piece_mat, and pawn_mat 
+	   (tried parallelizing, but makes function even slower) */
+	for (i = 0; i < 10; ++i) {
+		pawn_rank[LIGHT][i] = 0;
+		pawn_rank[DARK][i] = 7;
+	}
+	piece_mat[LIGHT] = 0;
+	piece_mat[DARK] = 0;
+	pawn_mat[LIGHT] = 0;
+	pawn_mat[DARK] = 0;
+	for (i = 0; i < 64; ++i) {
+		if (color[i] == EMPTY)
+			continue;
+		if (piece[i] == PAWN) {
+			pawn_mat[color[i]] += piece_value[PAWN];
+			f = COL(i) + 1;  /* add 1 because of the extra file in the array */
+			if (color[i] == LIGHT) {
+				if (pawn_rank[LIGHT][f] < ROW(i))
+					pawn_rank[LIGHT][f] = ROW(i);
+			}
+			else {
+				if (pawn_rank[DARK][f] > ROW(i))
+					pawn_rank[DARK][f] = ROW(i);
+			}
+		}
+		else
+			piece_mat[color[i]] += piece_value[piece[i]];
+	}
+	score[LIGHT] = piece_mat[LIGHT] + pawn_mat[LIGHT];
+	score[DARK] = piece_mat[DARK] + pawn_mat[DARK];
+	}
+
+	/* this is the second pass: evaluate each piece (in parallel) */	
+	int own_score[2] = {0, 0};
+	#pragma omp for private(i) nowait
+	for (i = 0; i < 64; ++i) {
+		if (color[i] == EMPTY)
+			continue;
+		if (color[i] == LIGHT) {
+			switch (piece[i]) {
+				case PAWN:
+					own_score[LIGHT] += eval_light_pawn(i);
+					break;
+				case KNIGHT:
+					own_score[LIGHT] += knight_pcsq[i];
+					break;
+				case BISHOP:
+					own_score[LIGHT] += bishop_pcsq[i];
+					break;
+				case ROOK:
+					if (pawn_rank[LIGHT][COL(i) + 1] == 0) {
+						if (pawn_rank[DARK][COL(i) + 1] == 7)
+							own_score[LIGHT] += ROOK_OPEN_FILE_BONUS;
+						else
+							own_score[LIGHT] += ROOK_SEMI_OPEN_FILE_BONUS;
+					}
+					if (ROW(i) == 1)
+						own_score[LIGHT] += ROOK_ON_SEVENTH_BONUS;
+					break;
+				case KING:
+					if (piece_mat[DARK] <= 1200)
+						own_score[LIGHT] += king_endgame_pcsq[i];
+					else
+						own_score[LIGHT] += eval_light_king(i);
+					break;
+			}
+		}
+		else {
+			switch (piece[i]) {
+				case PAWN:
+					own_score[DARK] += eval_dark_pawn(i);
+					break;
+				case KNIGHT:
+					own_score[DARK] += knight_pcsq[flip[i]];
+					break;
+				case BISHOP:
+					own_score[DARK] += bishop_pcsq[flip[i]];
+					break;
+				case ROOK:
+					if (pawn_rank[DARK][COL(i) + 1] == 7) {
+						if (pawn_rank[LIGHT][COL(i) + 1] == 0)
+							own_score[DARK] += ROOK_OPEN_FILE_BONUS;
+						else
+							own_score[DARK] += ROOK_SEMI_OPEN_FILE_BONUS;
+					}
+					if (ROW(i) == 6)
+						own_score[DARK] += ROOK_ON_SEVENTH_BONUS;
+					break;
+				case KING:
+					if (piece_mat[LIGHT] <= 1200)
+						own_score[DARK] += king_endgame_pcsq[flip[i]];
+					else
+						own_score[DARK] += eval_dark_king(i);
+					break;
+			}
+		}
+	}
+	#pragma omp atomic
+	score[LIGHT] += own_score[LIGHT];
+	#pragma omp atomic
+	score[DARK] += own_score[DARK];
+	}
+
+	/* the score[] array is set, now return the score relative
+	   to the side to move */
+	if (side == LIGHT)
+		return score[LIGHT] - score[DARK];
+
+	return score[DARK] - score[LIGHT];	
+}
+
 
 int eval_light_pawn(int sq)
 {

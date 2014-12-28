@@ -64,18 +64,4 @@ extern char piece_char[6];
 extern int init_color[64];
 extern int init_piece[64];
 
-// eval.c data (for parallel search, and peval.c)
-
-extern int piece_value[6];
-extern int pawn_pcsq[64];
-extern int knight_pcsq[64];
-extern int bishop_pcsq[64];
-extern int king_pcsq[64];
-extern int king_endgame_pcsq[64];
-extern int flip[64];
-
-extern int pawn_rank[2][10];
-extern int piece_mat[2];
-extern int pawn_mat[2];
-
 #endif /* DATA_H */

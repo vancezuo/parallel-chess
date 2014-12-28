@@ -1,7 +1,7 @@
 CC = icc
 CFLAGS = -g -O3 -Wall -xHost -fno-alias -std=c99 -openmp
 
-OBJS = main.o search.o eval.o peval.o data.o board.o book.o
+OBJS = main.o search.o eval.o data.o board.o book.o
 
 chess: ${OBJS}
 	$(CC) $(CFLAGS) -o $@ $^

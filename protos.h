@@ -45,21 +45,13 @@ void omp_synchronize_state();
 
 /* eval.c */
 int eval();
+int peval();
 int eval_light_pawn(int sq);
 int eval_dark_pawn(int sq);
 int eval_light_king(int sq);
 int eval_lkp(int f);
 int eval_dark_king(int sq);
 int eval_dkp(int f);
-
-/* peval.c */
-int peval();
-int peval_light_pawn(int sq);
-int peval_dark_pawn(int sq);
-int peval_light_king(int sq);
-int peval_lkp(int f);
-int peval_dark_king(int sq);
-int peval_dkp(int f);
 
 /* main.c */
 int get_ms();
