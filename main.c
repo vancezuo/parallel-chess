@@ -499,7 +499,8 @@ void print_result()
 	else if (fifty >= 100)
 		printf("1/2-1/2 {Draw by fifty move rule}\n");
 }
-   
+
+
 /* bench_default: sets position to move 17 of Bobby Fischer vs. J. Sherwin,
    New Jersey State Open Championship, 9/2/1957. */
 
@@ -540,6 +541,7 @@ void bench_default() {
 	ply = 0;
 	hply = 0;
 }
+
 
 /* bench_parse: sets up board based on FEN notation string. 
    It calls bench_default() instead if there is an "obvious" error 
@@ -710,6 +712,7 @@ void bench_parse(char *fen) {
 	
 	printf("Loaded: %s\n", fen);
 }
+
 
 /* bench: This is a little benchmark code that calculates how many
    nodes per second TSCP searches.

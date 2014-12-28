@@ -3,6 +3,7 @@
  *	Tom Kerrigan's Simple Chess Program (TSCP)
  *
  *	Copyright 1997 Tom Kerrigan
+ *  Modifications: Copyright 2014 Vance Zuo
  */
 
 

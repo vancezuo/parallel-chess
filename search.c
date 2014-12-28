@@ -222,8 +222,6 @@ int prs_search(int alpha, int beta, int depth)
 	/* loop through the moves */
 	for (i = first_move[ply]; i < first_move[ply + 1]; ++i)
 		sort(i);
-		
-	// omp_synchronize_state();
 	#pragma omp parallel for schedule(dynamic,1) copyin(color, piece, \
 			side, xside, castle, ep, fifty, hash, ply, hply, \
 			gen_dat, first_move,  hist_dat, pv, pv_length, follow_pv) \
@@ -234,7 +232,6 @@ int prs_search(int alpha, int beta, int depth)
 		f = TRUE;
 		x = -search(-beta, -alpha, depth - 1);
 		takeback();
-		// printf("Move %d (%s)... %d [%d]\n", i, move_str(gen_dat[i].m.b), x, omp_get_thread_num());
 		#pragma omp critical
 		if (x > alpha && !cutoff) {
 			/* this move caused a cutoff, so increase the history
@@ -251,12 +248,6 @@ int prs_search(int alpha, int beta, int depth)
 				for (j = ply + 1; j < pv_length[ply + 1]; ++j)
 					best_pv[j] = pv[ply][j] = pv[ply + 1][j];
 				best_pv_length = pv_length[ply] = pv_length[ply + 1];
-				
-				// printf("\tPV %d ", x);
-				// for (j = 0; j < best_pv_length; ++j)
-					// printf(" %s", move_str(best_pv[j].b));
-				// printf("\n");
-				// fflush(stdout);
 			}
 		}
 	}
@@ -334,7 +325,7 @@ int pvs_search(int alpha, int beta, int depth)
 	cutoff = FALSE;
 	best_pv_length = 0;
 
-	/* search first/PV variation before doing rest in parallel */
+	// search first/PV variation before doing rest in parallel
 	for (i0 = first_move[ply]; i0 < first_move[ply + 1]; ++i0) {
 		sort(i0);
 		if (!makemove(gen_dat[i0].m.b))
@@ -363,7 +354,6 @@ int pvs_search(int alpha, int beta, int depth)
 	/* loop through the moves */
 	for (i = i0; i < first_move[ply + 1]; ++i)
 		sort(i);
-	
 	#pragma omp parallel for schedule(dynamic,1) copyin(color, piece, \
 			side, xside, castle, ep, fifty, hash, ply, hply, \
 			gen_dat, first_move, hist_dat, pv, pv_length, follow_pv) \
@@ -464,7 +454,6 @@ int quiesce(int alpha,int beta)
 			continue;
 		x = -quiesce(-beta, -alpha);
 		takeback();
-		// printf("\tMove %d (%s)... %d [%d]\n", i, move_str(gen_dat[i].m.b), x, omp_get_thread_num());
 		if (stop_search || cutoff)
 			return alpha;
 		if (x > alpha) {
@@ -477,12 +466,6 @@ int quiesce(int alpha,int beta)
 			for (j = ply + 1; j < pv_length[ply + 1]; ++j)
 				pv[ply][j] = pv[ply + 1][j];
 			pv_length[ply] = pv_length[ply + 1];
-				
-			// printf("\tPV %d ", x);
-			// for (j = 0; j < best_pv_length; ++j)
-				// printf(" %s", move_str(best_pv[j].b));
-			// printf("\n");
-			// fflush(stdout);
 		}
 	}
 	return alpha;
@@ -527,9 +510,6 @@ int p_quiesce(int alpha,int beta)
 	/* loop through the moves */
 	for (i = first_move[ply]; i < first_move[ply + 1]; ++i)
 		sort(i);
-
-	// omp_synchronize_state();
-	// #pragma omp parallel for ordered schedule(dynamic,1) private(i, j, x)
 	#pragma omp parallel for schedule(dynamic,1) copyin(color, piece, \
 			side, xside, castle, ep, fifty, hash, ply, hply, \
 			gen_dat, first_move,  hist_dat, pv, pv_length, follow_pv) \
@@ -553,37 +533,7 @@ int p_quiesce(int alpha,int beta)
 				best_pv_length = pv_length[ply] = pv_length[ply + 1];
 			}
 		}
-	} // */
-	
-	/* #pragma omp parallel private(i, x) copyin(color, piece, side, xside, \
-			castle, ep, fifty, hash, ply, hply, gen_dat, first_move, \
-			pv, pv_length, follow_pv) num_threads(1)
-	{
-	#pragma omp master
-	for (i = first_move[ply]; i < first_move[ply + 1]; ++i) {
-		#pragma omp task 
-		{
-		if (!stop_search && !cutoff && makemove(gen_dat[i].m.b)) {
-			x = -quiesce(-beta, -alpha);
-			takeback();
-			#pragma omp critical (quiesce_check)
-			if (x > alpha) {
-				if (x >= beta) {
-					cutoff = TRUE;
-				} else {
-					alpha = x;
-
-					// update the (local) PV
-					best_pv[ply] = pv[ply][ply] = gen_dat[i].m;
-					for (j = ply + 1; j < pv_length[ply + 1]; ++j)
-						best_pv[j] = pv[ply][j] = pv[ply + 1][j];
-					best_pv_length = pv_length[ply] = pv_length[ply + 1];
-				}
-			}
-		}
-		}
 	}
-	} // */	
 	
 	// update the PV
 	if (best_pv_length > 0) {
@@ -671,64 +621,4 @@ BOOL timeout()
 		return TRUE;
 	}
 	return FALSE;
-}
-
-
-/* omp_synchronize_state() copies the master's board state to the board state 
-   of other OpenMP threads. */
-   
-void omp_synchronize_state() {
-	int master_color[64];
-	int master_piece[64];
-	int master_side;
-	int master_xside;
-	int master_castle;
-	int master_ep;
-	int master_fifty;
-	int master_hash;
-	int master_ply;
-	int master_hply;
-	gen_t master_gen_dat[GEN_STACK];
-	int master_first_move[MAX_PLY];
-	hist_t master_hist_dat[HIST_STACK];
-	move master_pv[MAX_PLY][MAX_PLY];
-	int master_pv_length[MAX_PLY];
-	BOOL master_follow_pv;
-	
-	memcpy(master_color, color, sizeof(color));
-	memcpy(master_piece, piece, sizeof(piece));
-	master_side = side;
-	master_xside = xside;
-	master_castle = castle;
-	master_ep = ep;
-	master_fifty = fifty;
-	master_hash = hash;
-	master_ply = ply;
-	master_hply = hply;
-	memcpy(master_gen_dat, gen_dat, sizeof(gen_dat));
-	memcpy(master_first_move, first_move, sizeof(first_move));
-	memcpy(master_hist_dat, hist_dat, sizeof(hist_dat));
-	memcpy(master_pv, pv, sizeof(pv));
-	memcpy(master_pv_length, pv_length, sizeof(pv_length));
-	master_follow_pv = follow_pv;
-	
-	#pragma omp parallel
-	{
-	memcpy(color, master_color, sizeof(color));
-	memcpy(piece, master_piece, sizeof(piece));
-	side = master_side;
-	xside = master_xside;
-	castle = master_castle;
-	ep = master_ep;
-	fifty = master_fifty;
-	hash = master_hash;
-	ply = master_ply;
-	hply = master_hply;
-	memcpy(gen_dat, master_gen_dat, sizeof(gen_dat));
-	memcpy(first_move, master_first_move, sizeof(first_move));
-	memcpy(hist_dat, master_hist_dat, sizeof(hist_dat));
-	memcpy(pv, master_pv, sizeof(pv));
-	memcpy(pv_length, master_pv_length, sizeof(pv_length));
-	follow_pv = master_follow_pv;
-	}
 }
