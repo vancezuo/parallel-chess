@@ -35,6 +35,7 @@ BOOL book_match(char *s1, char *s2);
 void think(int output);
 int search(int alpha, int beta, int depth);
 int psearch(int alpha, int beta, int depth);
+int pvs_search(int alpha, int beta, int depth);
 int quiesce(int alpha, int beta);
 int pquiesce(int alpha, int beta);
 int reps();

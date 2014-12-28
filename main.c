@@ -155,10 +155,13 @@ int main()
 				printf("Using parallel static evaluation.\n");
 			} else if (s[0] == 'q') {
 				quiesce_func = &pquiesce;
-				printf("Using parallel quiescence search function.\n");
+				printf("Using parallel quiescence search.\n");
 			} else if (s[0] == 'r') {
 				search_func = &psearch;
-				printf("Using parallel alpha-beta search function.\n");
+				printf("Using parallel root-splitting alpha-beta search.\n");
+			} else if (s[0] == 'v') {
+				search_func = &pvs_search;
+				printf("Using parallel PV-splitting alpha-beta search.\n");
 			} else {
 				printf("Reset to serial functions.\n");
 			}
@@ -188,10 +191,11 @@ int main()
 			printf("new - starts a new game\n");
 			printf("d - display the board\n");
 			printf("bench [fen] - benchmark built-in, or fen, position\n");
-			printf("p [e|q|r] - set parallel function (rest use serial)\n");
+			printf("p [e|q|r|v] - set parallel function (rest use serial)\n");
 			printf("    e = parallel static evaluation\n");
 			printf("    q = parallel quiescence search\n");
 			printf("    r = parallel (root-splitting) alpha-beta search\n");
+			printf("    v = parallel (PV-splitting) alpha-beta search\n");
 			printf("t n - set number of threads to n\n");
 			printf("bye - exit the program\n");
 			printf("xboard - switch to XBoard mode\n");

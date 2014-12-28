@@ -1,7 +1,7 @@
 cs424-chess
 ===========
 
-This repository contains source code for Vance Zuo's a final project in Yale's CPSC 424 - Parallel Programming Techniques course. It modifies [Tom Kerrigan's Simple Chess Program](http://www.tckerrigan.com/chess/tscp) (TSCP) to test parallel static evaluation, quiescence search, and alpha-beta search. Of these, the first two fail laughably. Parallel (root splitting) alpha-beta search however yields modest speedups.
+This repository contains source code for Vance Zuo's a final project in Yale's CPSC 424 - Parallel Programming Techniques course. It modifies [Tom Kerrigan's Simple Chess Program](http://www.tckerrigan.com/chess/tscp) (TSCP) to test parallel static evaluation, quiescence search, and alpha-beta search. Of these, the first two fail laughably, due to overhead and Amdahl's Law. Parallel alpha-beta search methods (root splitting, and principal variation splitting) however yield reasonable speedups.
 
 This derivative work has the permission of Tom Kerrigan, whose reserves all rights to TSCP. Further information on his website (http://www.tckerrigan.com):
 
@@ -38,10 +38,11 @@ undo - takes back a move
 new - starts a new game
 d - display the board
 bench [fen] - benchmark built-in, or fen, position
-p [e|q|r] - set parallel function (rest use serial)
+p [e|q|r|v] - set parallel function (rest use serial)
     e = parallel static evaluation
     q = parallel quiescence search
     r = parallel (root-splitting) alpha-beta search
+    v = parallel (PV-splitting) alpha-beta search
 t n - set number of threads to n
 bye - exit the program
 xboard - switch to XBoard mode
