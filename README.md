@@ -1,5 +1,5 @@
-cs424-chess
-===========
+parallel-chess
+==============
 
 This repository contains source code for Vance Zuo's a final project in Yale's CPSC 424 - Parallel Programming Techniques course. It modifies [Tom Kerrigan's Simple Chess Program](http://www.tckerrigan.com/chess/tscp) (TSCP) to test parallel static evaluation, quiescence search, and alpha-beta search. Of these, the first two fail laughably, due to overhead and Amdahl's Law. Parallel alpha-beta search methods (root splitting, and principal variation splitting) however yield reasonable speedups.
 
